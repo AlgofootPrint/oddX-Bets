@@ -1,0 +1,8 @@
+node_modules/
+dist/
+contracts/node_modules/
+contracts/artifacts/
+contracts/cache/
+*.tsbuildinfo
+.env
+contracts/.env

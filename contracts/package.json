@@ -1,0 +1,17 @@
+{
+  "name": "oddx-bets-contracts",
+  "private": true,
+  "version": "0.1.0",
+  "type": "commonjs",
+  "scripts": {
+    "compile": "hardhat compile",
+    "deploy:testnet": "hardhat run scripts/deploy.js --network xlayer_testnet",
+    "deploy:testnet:demo": "hardhat run scripts/deploy-testnet.js --network xlayer_testnet",
+    "deploy:mainnet": "hardhat run scripts/deploy.js --network xlayer"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "dotenv": "^16.4.7",
+    "hardhat": "^2.22.18"
+  }
+}
