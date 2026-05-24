@@ -1006,8 +1006,8 @@ function AppNavbar({
                   {[
                     ["Home", "home"],
                     ["Games", "games"],
-                    ["Preds", "predictions"],
-                    ["My", "my-predictions"],
+                    ["Predictions", "predictions"],
+                    ["My Predictions", "my-predictions"],
                     ["Profile", "profile"],
                   ].map(([label, tab]) => (
                     <button
@@ -1151,9 +1151,23 @@ function LiveWinsTicker({ variant = "hero" }: { variant?: "hero" | "section" }) 
 }
 
 function KickCrashMedia({ roundState }: { roundState: RoundState }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || roundState === "waiting") return;
+
+    video.currentTime = 0;
+    video.load();
+    void video.play().catch(() => {
+      // Browsers can still reject autoplay; muted + playsInline handles most cases.
+    });
+  }, [roundState]);
+
   if (roundState === "kicking") {
     return (
       <video
+        ref={videoRef}
         key="kickoff"
         className="absolute inset-0 z-0 h-full w-full object-cover object-center"
         autoPlay
@@ -1162,6 +1176,10 @@ function KickCrashMedia({ roundState }: { roundState: RoundState }) {
         playsInline
         controls={false}
         poster="/kick/restingstatekick.png"
+        onLoadedData={() => {
+          const video = videoRef.current;
+          void video?.play().catch(() => {});
+        }}
       >
         <source src="/kick/kickanimatemiddle.mp4" type="video/mp4" />
       </video>
@@ -1171,6 +1189,7 @@ function KickCrashMedia({ roundState }: { roundState: RoundState }) {
   if (roundState === "live" || roundState === "cashed") {
     return (
       <video
+        ref={videoRef}
         key="inair"
         className="absolute inset-0 z-0 h-full w-full object-cover object-center"
         autoPlay
@@ -1180,6 +1199,10 @@ function KickCrashMedia({ roundState }: { roundState: RoundState }) {
         playsInline
         controls={false}
         poster="/kick/restingstatekick.png"
+        onLoadedData={() => {
+          const video = videoRef.current;
+          void video?.play().catch(() => {});
+        }}
       >
         <source src="/kick/inair.mp4" type="video/mp4" />
       </video>
@@ -1189,6 +1212,7 @@ function KickCrashMedia({ roundState }: { roundState: RoundState }) {
   if (roundState === "crashed") {
     return (
       <video
+        ref={videoRef}
         key="fall"
         className="absolute inset-0 z-0 h-full w-full object-cover object-center"
         autoPlay
@@ -1197,6 +1221,10 @@ function KickCrashMedia({ roundState }: { roundState: RoundState }) {
         playsInline
         controls={false}
         poster="/kick/restingstatekick.png"
+        onLoadedData={() => {
+          const video = videoRef.current;
+          void video?.play().catch(() => {});
+        }}
       >
         <source src="/kick/fallball.mp4" type="video/mp4" />
       </video>
@@ -1214,9 +1242,23 @@ function KickCrashMedia({ roundState }: { roundState: RoundState }) {
 }
 
 function CupChaseMedia({ roundState }: { roundState: RoundState }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || roundState === "waiting") return;
+
+    video.currentTime = 0;
+    video.load();
+    void video.play().catch(() => {
+      // Keep the component visible even if the browser blocks autoplay.
+    });
+  }, [roundState]);
+
   if (roundState === "kicking" || roundState === "live" || roundState === "cashed") {
     return (
       <video
+        ref={videoRef}
         key="running"
         className="absolute inset-0 z-0 h-full w-full object-cover object-center"
         autoPlay
@@ -1226,6 +1268,10 @@ function CupChaseMedia({ roundState }: { roundState: RoundState }) {
         playsInline
         controls={false}
         poster="/run/race1.png"
+        onLoadedData={() => {
+          const video = videoRef.current;
+          void video?.play().catch(() => {});
+        }}
       >
         <source src="/run/running.mp4" type="video/mp4" />
       </video>
