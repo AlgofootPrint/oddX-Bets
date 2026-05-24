@@ -13,6 +13,8 @@ import {
   Play,
   ShieldCheck,
   Trophy,
+  Volume2,
+  VolumeX,
   Wallet,
 } from "lucide-react";
 import { ContainerScroll } from "./components/ui/container-scroll-animation";
@@ -38,6 +40,24 @@ const XLAYER_TESTNET = {
 
 const tokenOptions = ["OKB", "USDC", "USDT"] as const;
 const KICKCRASH_BUILDER_EDGE_PERCENT = 7;
+const PLAYABLE_GAME_IDS = ["kickcrash", "cupchase"] as const;
+const KICKCRASH_KICKOFF_MS = 3289;
+const KICKCRASH_IN_AIR_MIN_MS = 3027;
+const KICKCRASH_FALL_MS = 3307;
+const CUPCHASE_RUNNING_MS = 10042;
+const CUPCHASE_MIN_RUNNING_MS = 1200;
+const ROUND_RESET_DELAY_MS: Record<"crashed" | "cashed", number> = {
+  crashed: KICKCRASH_FALL_MS,
+  cashed: 2200,
+};
+const MIN_LIVE_MS: Record<(typeof PLAYABLE_GAME_IDS)[number], number> = {
+  kickcrash: KICKCRASH_IN_AIR_MIN_MS,
+  cupchase: CUPCHASE_MIN_RUNNING_MS,
+};
+const MAX_LIVE_MS: Record<(typeof PLAYABLE_GAME_IDS)[number], number> = {
+  kickcrash: KICKCRASH_IN_AIR_MIN_MS,
+  cupchase: CUPCHASE_RUNNING_MS,
+};
 
 type Token = (typeof tokenOptions)[number];
 type WalletSource = "OKX Wallet" | "EVM Wallet";
@@ -78,6 +98,10 @@ type GameConfig = {
   action: string;
   history: string[];
 };
+
+function isPlayableGame(gameId: string): gameId is (typeof PLAYABLE_GAME_IDS)[number] {
+  return PLAYABLE_GAME_IDS.includes(gameId as (typeof PLAYABLE_GAME_IDS)[number]);
+}
 
 const games: GameConfig[] = [
   {
@@ -146,6 +170,7 @@ const markets = [
 const shorten = (account: string) => `${account.slice(0, 6)}...${account.slice(-4)}`;
 
 const PROFILE_STORAGE_KEY = "oddx-bets-profiles";
+const BACKGROUND_SOUND_SRC = "/background%20sound.MP3";
 
 function readProfiles(): Record<string, string> {
   if (typeof window === "undefined") return {};
@@ -183,6 +208,8 @@ function getFallbackProvider() {
 }
 
 function App() {
+  const backgroundAudioRef = useRef<HTMLAudioElement | null>(null);
+  const kickoffTimerRef = useRef<number | null>(null);
   const [account, setAccount] = useState("");
   const [walletSource, setWalletSource] = useState<WalletSource | "">("");
   const [username, setUsername] = useState("");
@@ -202,6 +229,7 @@ function App() {
   const [stake, setStake] = useState("0.05");
   const [message, setMessage] = useState("Connect to X Layer to activate wallet-gated play.");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isBackgroundMuted, setIsBackgroundMuted] = useState(false);
   const [mobileHeroScale, setMobileHeroScale] = useState(1.3);
   const [mobileHeroX, setMobileHeroX] = useState(2);
   const [mobileHeroY, setMobileHeroY] = useState(-40);
@@ -215,6 +243,60 @@ function App() {
   const xLayerY = -20;
 
   const provider = useMemo(() => getOkxProvider() ?? getFallbackProvider(), []);
+
+  const clearKickoffTimer = () => {
+    if (kickoffTimerRef.current === null) return;
+    window.clearTimeout(kickoffTimerRef.current);
+    kickoffTimerRef.current = null;
+  };
+
+  useEffect(() => {
+    const audio = new Audio(BACKGROUND_SOUND_SRC);
+    audio.loop = true;
+    audio.preload = "auto";
+    audio.volume = 0.495;
+    backgroundAudioRef.current = audio;
+
+    const removeUnlockListeners = () => {
+      window.removeEventListener("click", unlockAudio);
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+      window.removeEventListener("touchstart", unlockAudio);
+    };
+
+    const playAudio = async () => {
+      try {
+        await audio.play();
+        removeUnlockListeners();
+      } catch {
+        // Browsers generally require a user gesture before audible autoplay.
+      }
+    };
+
+    const unlockAudio = () => {
+      void playAudio();
+    };
+
+    void playAudio();
+    window.addEventListener("click", unlockAudio);
+    window.addEventListener("pointerdown", unlockAudio);
+    window.addEventListener("keydown", unlockAudio);
+    window.addEventListener("touchstart", unlockAudio);
+
+    return () => {
+      removeUnlockListeners();
+      audio.pause();
+      backgroundAudioRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (backgroundAudioRef.current) {
+      backgroundAudioRef.current.muted = isBackgroundMuted;
+    }
+  }, [isBackgroundMuted]);
+
+  useEffect(() => clearKickoffTimer, []);
 
   useEffect(() => {
     if (!provider?.on) return;
@@ -242,7 +324,7 @@ function App() {
   }, [provider]);
 
   useEffect(() => {
-    if (!["kickcrash", "cupchase"].includes(activeGame.id) || roundState !== "waiting") return;
+    if (!isPlayableGame(activeGame.id) || roundState !== "waiting") return;
 
     setBetCountdown(5);
     const countdownTimer = window.setInterval(() => {
@@ -261,10 +343,12 @@ function App() {
   }, [activeGame, roundState]);
 
   useEffect(() => {
-    if (roundState !== "live") return;
+    if (!isPlayableGame(activeGame.id) || roundState !== "live") return;
 
     let liveMultiplier = 1;
+    const liveStartedAt = window.performance.now();
     const isCupChase = activeGame.id === "cupchase";
+    const minimumLiveMs = MIN_LIVE_MS[activeGame.id];
     const roll = Math.random();
     const crashAt =
       isCupChase
@@ -293,7 +377,7 @@ function App() {
       liveMultiplier = Number((liveMultiplier + step * edgeDrag).toFixed(2));
       setMultiplier(liveMultiplier);
 
-      if (liveMultiplier >= crashAt) {
+      if (liveMultiplier >= crashAt && window.performance.now() - liveStartedAt >= minimumLiveMs) {
         window.clearInterval(timer);
         setRoundState("crashed");
         setMultiplier(Number(crashAt.toFixed(2)));
@@ -302,47 +386,32 @@ function App() {
     }, 150);
 
     return () => window.clearInterval(timer);
-  }, [activeGame.crashText, roundState]);
+  }, [activeGame.crashText, activeGame.id, roundState]);
 
   useEffect(() => {
-    if (!["kickcrash", "cupchase"].includes(activeGame.id) || roundState !== "live") return;
+    if (!isPlayableGame(activeGame.id) || roundState !== "live") return;
 
     const liveGuardTimer = window.setTimeout(() => {
       setRoundState("crashed");
-      setRoundState("crashed");
-      setMessage("KickCrash round forced closed.");
-    }, activeGame.id === "cupchase" ? 8200 : 18000);
+      setMessage(`${activeGame.name} round forced closed.`);
+    }, MAX_LIVE_MS[activeGame.id]);
 
     return () => window.clearTimeout(liveGuardTimer);
-  }, [activeGame.id, roundState]);
+  }, [activeGame.id, activeGame.name, roundState]);
 
   useEffect(() => {
-    if (!["kickcrash", "cupchase"].includes(activeGame.id) || roundState !== "crashed") return;
+    if (!isPlayableGame(activeGame.id) || !["crashed", "cashed"].includes(roundState)) return;
 
     const resetTimer = window.setTimeout(() => {
       setRoundState("waiting");
       setMultiplier(1);
       setBetCountdown(5);
       setCurrentGameTicket(null);
-      setMessage("KickCrash ready for the next round.");
-    }, 2400);
+      setMessage(`${activeGame.name} ready for the next round.`);
+    }, ROUND_RESET_DELAY_MS[roundState as "crashed" | "cashed"]);
 
     return () => window.clearTimeout(resetTimer);
-  }, [activeGame.id, roundState]);
-
-  useEffect(() => {
-    if (!["kickcrash", "cupchase"].includes(activeGame.id) || roundState !== "cashed") return;
-
-    const cashoutResetTimer = window.setTimeout(() => {
-      setRoundState("waiting");
-      setMultiplier(1);
-      setBetCountdown(5);
-      setCurrentGameTicket(null);
-      setMessage("KickCrash ready for the next round.");
-    }, 2200);
-
-    return () => window.clearTimeout(cashoutResetTimer);
-  }, [activeGame.id, roundState]);
+  }, [activeGame.id, activeGame.name, roundState]);
 
   async function connectWallet() {
     const okx = getOkxProvider();
@@ -396,6 +465,10 @@ function App() {
 
   async function beginRound(game: GameConfig) {
     if (!requireWallet("join this round")) return;
+    if (roundState !== "waiting") {
+      setMessage("Wait for the next betting window before joining another round.");
+      return;
+    }
 
     try {
       const joinTxHash = await sendArenaParticipation({
@@ -523,21 +596,46 @@ function App() {
   }
 
   function startRound(game: GameConfig) {
+    clearKickoffTimer();
     setActiveGame(game);
     setMultiplier(1);
-    if (["kickcrash", "cupchase"].includes(game.id)) {
+    if (game.id === "kickcrash") {
       setRoundState("kicking");
       setBetCountdown(0);
-      setMessage(game.id === "kickcrash" ? "KickCrash kickoff. Ball is launching." : "Cup Chase started. Runner is chasing the trophy.");
-      window.setTimeout(() => {
+      setMessage("KickCrash kickoff. Ball is launching.");
+      kickoffTimerRef.current = window.setTimeout(() => {
+        kickoffTimerRef.current = null;
         setRoundState("live");
-        setMessage(game.id === "kickcrash" ? "KickCrash live. Cash out before the ball crashes." : "Cup Chase live. Cash out before the trophy escapes.");
-      }, 1250);
+        setMessage("KickCrash live. Cash out before the ball crashes.");
+      }, KICKCRASH_KICKOFF_MS + 150);
+      return;
+    }
+
+    if (game.id === "cupchase") {
+      setRoundState("live");
+      setBetCountdown(0);
+      setMessage("Cup Chase live. Cash out before the trophy escapes.");
       return;
     }
 
     setRoundState("live");
     setMessage(`${game.name} live. Cash out before the crash.`);
+  }
+
+  function completeKickCrashKickoff() {
+    if (activeGame.id !== "kickcrash" || roundState !== "kicking") return;
+    clearKickoffTimer();
+    setRoundState("live");
+    setMessage("KickCrash live. Cash out before the ball crashes.");
+  }
+
+  function completeCrashAnimation() {
+    if (!isPlayableGame(activeGame.id) || roundState !== "crashed") return;
+    setRoundState("waiting");
+    setMultiplier(1);
+    setBetCountdown(5);
+    setCurrentGameTicket(null);
+    setMessage(`${activeGame.name} ready for the next round.`);
   }
 
   async function cashOut() {
@@ -591,6 +689,8 @@ function App() {
           onDisconnect={disconnectWallet}
           onSwitch={() => ensureXLayer()}
           onToggleMobileMenu={() => setIsMobileMenuOpen((current) => !current)}
+          isBackgroundMuted={isBackgroundMuted}
+          onToggleBackgroundAudio={() => setIsBackgroundMuted((current) => !current)}
           ballScale={ballScale}
           ballX={ballX}
           ballY={ballY}
@@ -609,6 +709,8 @@ function App() {
           onDisconnect={disconnectWallet}
           onSwitch={() => ensureXLayer()}
           onToggleMobileMenu={() => setIsMobileMenuOpen((current) => !current)}
+          isBackgroundMuted={isBackgroundMuted}
+          onToggleBackgroundAudio={() => setIsBackgroundMuted((current) => !current)}
           activeTab={activeTab}
           onTabChange={setActiveTab}
         />
@@ -639,21 +741,24 @@ function App() {
             roundState={roundState}
             betCountdown={betCountdown}
             currentGameTicket={currentGameTicket}
-          stake={stake}
-          selectedToken={selectedToken}
-          onStakeChange={setStake}
-          onTokenChange={setSelectedToken}
-          onStart={beginRound}
-          onSelectGame={(game) => {
-            setActiveGame(game);
-            setRoundState("waiting");
-            setMultiplier(1);
-            setBetCountdown(5);
-            setCurrentGameTicket(null);
-            setMessage(game.id === "kickcrash" ? "KickCrash selected. Wait for the next betting window." : "Cup Chase selected. Wait for the next betting window.");
-          }}
-          onCashOut={cashOut}
-        />
+            stake={stake}
+            selectedToken={selectedToken}
+            onStakeChange={setStake}
+            onTokenChange={setSelectedToken}
+            onStart={beginRound}
+            onSelectGame={(game) => {
+              clearKickoffTimer();
+              setActiveGame(game);
+              setRoundState("waiting");
+              setMultiplier(1);
+              setBetCountdown(5);
+              setCurrentGameTicket(null);
+              setMessage(game.id === "kickcrash" ? "KickCrash selected. Wait for the next betting window." : "Cup Chase selected. Wait for the next betting window.");
+            }}
+            onCashOut={cashOut}
+            onKickoffComplete={completeKickCrashKickoff}
+            onCrashComplete={completeCrashAnimation}
+          />
 
           <LiveWinsTicker variant="section" />
         </>
@@ -746,6 +851,8 @@ function Hero({
   onDisconnect,
   onSwitch,
   onToggleMobileMenu,
+  isBackgroundMuted,
+  onToggleBackgroundAudio,
   ballScale,
   ballX,
   ballY,
@@ -775,6 +882,8 @@ function Hero({
   onDisconnect: () => void;
   onSwitch: () => void;
   onToggleMobileMenu: () => void;
+  isBackgroundMuted: boolean;
+  onToggleBackgroundAudio: () => void;
   ballScale: number;
   ballX: number;
   ballY: number;
@@ -783,19 +892,6 @@ function Hero({
   activeTab: AppTab;
   onTabChange: (tab: AppTab) => void;
 }) {
-  const heroAudioRef = useRef<HTMLAudioElement | null>(null);
-
-  useEffect(() => {
-    const audio = new Audio("/suuii.mp3");
-    audio.preload = "auto";
-    audio.volume = 0.7;
-    heroAudioRef.current = audio;
-
-    return () => {
-      heroAudioRef.current = null;
-    };
-  }, []);
-
   return (
     <section id="home" className="relative overflow-hidden bg-white px-4 pb-12 pt-0 text-black md:pt-0">
       <img
@@ -814,6 +910,8 @@ function Hero({
         onDisconnect={onDisconnect}
         onSwitch={onSwitch}
         onToggleMobileMenu={onToggleMobileMenu}
+        isBackgroundMuted={isBackgroundMuted}
+        onToggleBackgroundAudio={onToggleBackgroundAudio}
         activeTab={activeTab}
         onTabChange={onTabChange}
         flush
@@ -823,12 +921,6 @@ function Hero({
         mobileTransformScale={mobileHeroScale}
         mobileTransformX={mobileHeroX}
         mobileTransformY={mobileHeroY}
-        onComplete={() => {
-          const audio = heroAudioRef.current;
-          if (!audio) return;
-          audio.currentTime = 0;
-          void audio.play();
-        }}
         titleComponent={
           <div className="relative mx-auto hidden min-h-[16rem] max-w-6xl text-center sm:block sm:min-h-[20rem] md:min-h-[24rem]">
             <img
@@ -948,6 +1040,8 @@ function AppNavbar({
   onDisconnect,
   onSwitch,
   onToggleMobileMenu,
+  isBackgroundMuted,
+  onToggleBackgroundAudio,
   activeTab,
   onTabChange,
   flush = false,
@@ -960,6 +1054,8 @@ function AppNavbar({
   onDisconnect: () => void;
   onSwitch: () => void;
   onToggleMobileMenu: () => void;
+  isBackgroundMuted: boolean;
+  onToggleBackgroundAudio: () => void;
   activeTab: AppTab;
   onTabChange: (tab: AppTab) => void;
   flush?: boolean;
@@ -976,8 +1072,16 @@ function AppNavbar({
 
             <div className="flex items-center gap-1">
               <button
+                onClick={onToggleBackgroundAudio}
+                className="inline-flex min-h-9 min-w-9 items-center justify-center rounded border border-white/15 bg-white/[0.04] px-2 py-2 text-white"
+                aria-label={isBackgroundMuted ? "Unmute background sound" : "Mute background sound"}
+                title={isBackgroundMuted ? "Unmute" : "Mute"}
+              >
+                {isBackgroundMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+              </button>
+              <button
                 onClick={account ? onSwitch : onConnect}
-                className="inline-flex min-h-9 items-center gap-2 rounded border border-limeX/60 bg-limeX px-2.5 py-2 text-xs font-bold text-black transition hover:bg-white"
+                className="inline-flex min-h-9 items-center gap-2 rounded border border-limeX/60 bg-limeX px-2.5 py-2 text-xs font-bold text-black"
               >
                 <Wallet size={15} />
                 {account ? "Use X Layer" : "Connect"}
@@ -986,14 +1090,14 @@ function AppNavbar({
                 href="https://web3.okx.com/xlayer/faucet?utm_source=chatgpt.com"
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex min-h-9 items-center justify-center rounded border border-white/15 bg-white/[0.04] px-3 py-2 text-white transition hover:bg-white/[0.1]"
+                className="inline-flex min-h-9 items-center justify-center rounded border border-white/15 bg-white/[0.04] px-3 py-2 text-white"
                 aria-label="Open faucet"
               >
                 <Droplets size={16} />
               </a>
               <button
                 onClick={onToggleMobileMenu}
-                className="inline-flex min-h-9 items-center justify-center rounded border border-limeX/60 bg-limeX px-3 py-2 text-white transition hover:bg-white hover:text-black"
+                className="inline-flex min-h-9 items-center justify-center rounded border border-limeX/60 bg-limeX px-3 py-2 text-white"
                 aria-label="Open navigation menu"
               >
                 <Menu size={18} className="text-white" />
@@ -1081,6 +1185,14 @@ function AppNavbar({
 
             <div className="flex items-center gap-1.5">
               <button
+                onClick={onToggleBackgroundAudio}
+                className="inline-flex min-h-9 min-w-9 items-center justify-center rounded border border-white/15 bg-white/[0.04] px-2.5 py-2 text-white transition hover:bg-white/[0.1]"
+                aria-label={isBackgroundMuted ? "Unmute background sound" : "Mute background sound"}
+                title={isBackgroundMuted ? "Unmute" : "Mute"}
+              >
+                {isBackgroundMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+              </button>
+              <button
                 onClick={account ? onSwitch : onConnect}
                 className="inline-flex min-h-9 items-center gap-2 rounded border border-limeX/60 bg-limeX px-2.5 py-2 text-sm font-bold text-black transition hover:bg-white md:px-3"
               >
@@ -1150,7 +1262,15 @@ function LiveWinsTicker({ variant = "hero" }: { variant?: "hero" | "section" }) 
   );
 }
 
-function KickCrashMedia({ roundState }: { roundState: RoundState }) {
+function KickCrashMedia({
+  roundState,
+  onKickoffComplete,
+  onCrashComplete,
+}: {
+  roundState: RoundState;
+  onKickoffComplete: () => void;
+  onCrashComplete: () => void;
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -1158,7 +1278,6 @@ function KickCrashMedia({ roundState }: { roundState: RoundState }) {
     if (!video || roundState === "waiting") return;
 
     video.currentTime = 0;
-    video.load();
     void video.play().catch(() => {
       // Browsers can still reject autoplay; muted + playsInline handles most cases.
     });
@@ -1175,13 +1294,13 @@ function KickCrashMedia({ roundState }: { roundState: RoundState }) {
         muted
         playsInline
         controls={false}
-        poster="/kick/restingstatekick.png"
         onLoadedData={() => {
           const video = videoRef.current;
           void video?.play().catch(() => {});
         }}
+        onEnded={onKickoffComplete}
       >
-        <source src="/kick/kickanimatemiddle.mp4" type="video/mp4" />
+        <source src="/kick/kickanimation2.mp4" type="video/mp4" />
       </video>
     );
   }
@@ -1198,7 +1317,6 @@ function KickCrashMedia({ roundState }: { roundState: RoundState }) {
         muted
         playsInline
         controls={false}
-        poster="/kick/restingstatekick.png"
         onLoadedData={() => {
           const video = videoRef.current;
           void video?.play().catch(() => {});
@@ -1220,11 +1338,11 @@ function KickCrashMedia({ roundState }: { roundState: RoundState }) {
         muted
         playsInline
         controls={false}
-        poster="/kick/restingstatekick.png"
         onLoadedData={() => {
           const video = videoRef.current;
           void video?.play().catch(() => {});
         }}
+        onEnded={onCrashComplete}
       >
         <source src="/kick/fallball.mp4" type="video/mp4" />
       </video>
@@ -1246,16 +1364,15 @@ function CupChaseMedia({ roundState }: { roundState: RoundState }) {
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || roundState === "waiting") return;
+    if (!video || roundState !== "live") return;
 
     video.currentTime = 0;
-    video.load();
     void video.play().catch(() => {
       // Keep the component visible even if the browser blocks autoplay.
     });
   }, [roundState]);
 
-  if (roundState === "kicking" || roundState === "live" || roundState === "cashed") {
+  if (roundState === "live") {
     return (
       <video
         ref={videoRef}
@@ -1267,7 +1384,6 @@ function CupChaseMedia({ roundState }: { roundState: RoundState }) {
         muted
         playsInline
         controls={false}
-        poster="/run/race1.png"
         onLoadedData={() => {
           const video = videoRef.current;
           void video?.play().catch(() => {});
@@ -1313,6 +1429,8 @@ function GamesSection({
   onStart,
   onSelectGame,
   onCashOut,
+  onKickoffComplete,
+  onCrashComplete,
 }: {
   account: string;
   activeGame: GameConfig;
@@ -1327,7 +1445,27 @@ function GamesSection({
   onStart: (game: GameConfig) => void;
   onSelectGame: (game: GameConfig) => void;
   onCashOut: () => void;
+  onKickoffComplete: () => void;
+  onCrashComplete: () => void;
 }) {
+  const stakeAmount = Number(stake || 0);
+  const potentialWin = useMemo(() => `${(stakeAmount * multiplier).toFixed(3)} ${selectedToken}`, [multiplier, selectedToken, stakeAmount]);
+  const roundLabel = useMemo(() => {
+    if (roundState === "kicking") return "Kickoff";
+    if (roundState === "live") return "Live";
+    if (roundState === "waiting") return `${betCountdown}s to start`;
+    return "Ended";
+  }, [betCountdown, roundState]);
+  const statusText = useMemo(() => {
+    if (roundState === "waiting") return "Powering up";
+    if (roundState === "kicking") return "Kickoff";
+    if (roundState === "live") return activeGame.id === "kickcrash" ? "Ball in flight" : "Chasing the cup";
+    if (roundState === "crashed") return activeGame.crashText;
+    return "Cashed out";
+  }, [activeGame.crashText, activeGame.id, roundState]);
+  const canJoinRound = roundState === "waiting";
+  const canCashOut = roundState === "live";
+
   return (
     <section id="games" className="relative overflow-hidden bg-[#080a08] px-4 py-12 md:py-20">
       <img
@@ -1381,7 +1519,8 @@ function GamesSection({
             {games.map((game) => (
               <article
                 key={game.id}
-                className={`rounded border p-5 transition ${
+                onClick={() => onSelectGame(game)}
+                className={`cursor-pointer rounded border p-5 transition ${
                   activeGame.id === game.id ? "border-limeX/60 bg-limeX/[0.06]" : "border-white/10 bg-white/[0.03]"
                 }`}
               >
@@ -1401,11 +1540,15 @@ function GamesSection({
                   ))}
                 </div>
                 <button
-                  onClick={() => onStart(game)}
-                  className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded bg-white px-4 py-2 text-sm font-black text-black transition hover:bg-limeX"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onSelectGame(game);
+                  }}
+                  disabled={!canJoinRound}
+                  className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded bg-white px-4 py-2 text-sm font-black text-black transition hover:bg-limeX disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-white/35"
                 >
                   <Play size={16} />
-                  {game.action}
+                  {activeGame.id === game.id ? "Selected" : `Select ${game.name}`}
                 </button>
               </article>
             ))}
@@ -1427,7 +1570,7 @@ function GamesSection({
               <div className={`absolute inset-x-0 bottom-0 z-0 h-24 bg-gradient-to-r ${activeGame.accent} opacity-25 blur-xl`} />
               {activeGame.id === "kickcrash" && (
                 <>
-                  <KickCrashMedia roundState={roundState} />
+                  <KickCrashMedia roundState={roundState} onKickoffComplete={onKickoffComplete} onCrashComplete={onCrashComplete} />
                   <div className="absolute inset-0 z-10 bg-gradient-to-r from-black/45 via-transparent to-black/25" />
                   {roundState === "crashed" && (
                     <div className="absolute right-8 top-20 z-20 rotate-[-6deg] text-4xl font-black uppercase text-ember drop-shadow-[0_4px_0_rgba(0,0,0,0.85)] md:text-6xl">
@@ -1473,11 +1616,7 @@ function GamesSection({
                 </div>
                 <div className="text-6xl font-black text-white">{multiplier.toFixed(2)}x</div>
                 <div className={`mt-3 text-lg font-black ${roundState === "crashed" ? "text-ember" : roundState === "cashed" ? "text-limeX" : "text-white/60"}`}>
-                  {roundState === "waiting" && "Powering up"}
-                  {roundState === "kicking" && (activeGame.id === "cupchase" ? "Sprint start" : "Kickoff")}
-                  {roundState === "live" && (activeGame.id === "kickcrash" ? "Ball in flight" : "Chasing the cup")}
-                  {roundState === "crashed" && activeGame.crashText}
-                  {roundState === "cashed" && "Cashed out"}
+                  {statusText}
                 </div>
               </div>
             </div>
@@ -1485,10 +1624,10 @@ function GamesSection({
             {["kickcrash", "cupchase"].includes(activeGame.id) && (
               <div className="mb-3 grid grid-cols-2 gap-1.5 md:grid-cols-4 md:gap-3">
                 {[
-                  ["Round", roundState === "kicking" ? (activeGame.id === "cupchase" ? "Sprint" : "Kickoff") : roundState === "live" ? "Live" : roundState === "waiting" ? `${betCountdown}s to start` : "Ended"],
+                  ["Round", roundLabel],
                   ["Auto cashout", activeGame.id === "cupchase" ? "1.85x" : "2.00x"],
-                  ["Potential win", `${(Number(stake || 0) * multiplier).toFixed(3)} ${selectedToken}`],
-                  ["Builder edge", `${KICKCRASH_BUILDER_EDGE_PERCENT}%`],
+                  ["Potential win", potentialWin],
+                  ["Arena edge", `${KICKCRASH_BUILDER_EDGE_PERCENT}%`],
                 ].map(([label, value]) => (
                   <div key={label} className="rounded border border-white/10 bg-black/35 px-2.5 py-2.5 md:px-3 md:py-3">
                     <p className="text-[10px] font-bold uppercase text-white/40 sm:text-xs">{label}</p>
@@ -1523,7 +1662,8 @@ function GamesSection({
                 <div className="flex items-end md:contents">
                   <button
                     onClick={() => onStart(activeGame)}
-                    className="inline-flex h-10 w-full items-center justify-center gap-2 rounded bg-white px-3 text-xs font-black text-black transition hover:bg-limeX sm:h-12 sm:px-4 sm:text-sm md:h-12"
+                    disabled={!canJoinRound}
+                    className="inline-flex h-10 w-full items-center justify-center gap-2 rounded bg-white px-3 text-xs font-black text-black transition hover:bg-limeX disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-white/35 sm:h-12 sm:px-4 sm:text-sm md:h-12"
                   >
                     <Play size={15} className="sm:size-[17px]" />
                     Join Round
@@ -1531,7 +1671,7 @@ function GamesSection({
                 </div>
                 <div className="flex items-end md:contents">
                   <button
-                    disabled={roundState !== "live"}
+                    disabled={!canCashOut}
                     onClick={onCashOut}
                     className="inline-flex h-10 w-full items-center justify-center gap-2 rounded bg-limeX px-3 text-xs font-black text-black transition hover:bg-white disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-white/35 sm:h-12 sm:px-4 sm:text-sm md:h-12"
                   >

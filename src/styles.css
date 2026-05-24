@@ -23,6 +23,8 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  cursor: default;
+  user-select: none;
   background:
     radial-gradient(circle at 50% 0%, rgba(244, 197, 66, 0.2), transparent 28rem),
     radial-gradient(circle at 8% 16%, rgba(182, 255, 8, 0.16), transparent 22rem),
@@ -34,6 +36,18 @@ button,
 input,
 select {
   font: inherit;
+}
+
+button,
+a,
+select {
+  cursor: pointer;
+}
+
+input,
+textarea {
+  cursor: text;
+  user-select: text;
 }
 
 .stadium-grid {
