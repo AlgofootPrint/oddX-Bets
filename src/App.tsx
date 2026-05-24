@@ -1155,10 +1155,13 @@ function KickCrashMedia({ roundState }: { roundState: RoundState }) {
     return (
       <video
         key="kickoff"
-        className="absolute inset-0 h-full w-full object-cover object-center"
+        className="absolute inset-0 z-0 h-full w-full object-cover object-center"
         autoPlay
+        preload="auto"
         muted
         playsInline
+        controls={false}
+        poster="/kick/restingstatekick.png"
       >
         <source src="/kick/kickanimatemiddle.mp4" type="video/mp4" />
       </video>
@@ -1169,11 +1172,14 @@ function KickCrashMedia({ roundState }: { roundState: RoundState }) {
     return (
       <video
         key="inair"
-        className="absolute inset-0 h-full w-full object-cover object-center"
+        className="absolute inset-0 z-0 h-full w-full object-cover object-center"
         autoPlay
         loop
+        preload="auto"
         muted
         playsInline
+        controls={false}
+        poster="/kick/restingstatekick.png"
       >
         <source src="/kick/inair.mp4" type="video/mp4" />
       </video>
@@ -1184,10 +1190,13 @@ function KickCrashMedia({ roundState }: { roundState: RoundState }) {
     return (
       <video
         key="fall"
-        className="absolute inset-0 h-full w-full object-cover object-center"
+        className="absolute inset-0 z-0 h-full w-full object-cover object-center"
         autoPlay
+        preload="auto"
         muted
         playsInline
+        controls={false}
+        poster="/kick/restingstatekick.png"
       >
         <source src="/kick/fallball.mp4" type="video/mp4" />
       </video>
@@ -1198,7 +1207,7 @@ function KickCrashMedia({ roundState }: { roundState: RoundState }) {
     <img
       src="/kick/restingstatekick.png"
       alt="KickCrash resting state"
-      className="absolute inset-0 h-full w-full object-cover object-center"
+      className="absolute inset-0 z-0 h-full w-full object-cover object-center"
       draggable={false}
     />
   );
@@ -1209,11 +1218,14 @@ function CupChaseMedia({ roundState }: { roundState: RoundState }) {
     return (
       <video
         key="running"
-        className="absolute inset-0 h-full w-full object-cover object-center"
+        className="absolute inset-0 z-0 h-full w-full object-cover object-center"
         autoPlay
         loop
+        preload="auto"
         muted
         playsInline
+        controls={false}
+        poster="/run/race1.png"
       >
         <source src="/run/running.mp4" type="video/mp4" />
       </video>
@@ -1225,7 +1237,7 @@ function CupChaseMedia({ roundState }: { roundState: RoundState }) {
       <img
         src="/run/ranway.png"
         alt="Cup Chase trophy escaped"
-        className="absolute inset-0 h-full w-full object-cover object-center"
+        className="absolute inset-0 z-0 h-full w-full object-cover object-center"
         draggable={false}
       />
     );
@@ -1235,7 +1247,7 @@ function CupChaseMedia({ roundState }: { roundState: RoundState }) {
     <img
       src="/run/race1.png"
       alt="Cup Chase ready state"
-      className="absolute inset-0 h-full w-full object-cover object-center"
+      className="absolute inset-0 z-0 h-full w-full object-cover object-center"
       draggable={false}
     />
   );
@@ -1365,12 +1377,12 @@ function GamesSection({
             </div>
 
             <div className="relative mb-2.5 min-h-[18rem] overflow-hidden rounded border border-white/10 bg-black md:mb-3 md:min-h-[21rem]">
-              <div className="absolute inset-0 stadium-grid opacity-20" />
-              <div className={`absolute inset-x-0 bottom-0 h-24 bg-gradient-to-r ${activeGame.accent} opacity-25 blur-xl`} />
+              <div className="absolute inset-0 z-0 stadium-grid opacity-20" />
+              <div className={`absolute inset-x-0 bottom-0 z-0 h-24 bg-gradient-to-r ${activeGame.accent} opacity-25 blur-xl`} />
               {activeGame.id === "kickcrash" && (
                 <>
                   <KickCrashMedia roundState={roundState} />
-                  <div className="absolute inset-0 bg-gradient-to-r from-black/45 via-transparent to-black/25" />
+                  <div className="absolute inset-0 z-10 bg-gradient-to-r from-black/45 via-transparent to-black/25" />
                   {roundState === "crashed" && (
                     <div className="absolute right-8 top-20 z-20 rotate-[-6deg] text-4xl font-black uppercase text-ember drop-shadow-[0_4px_0_rgba(0,0,0,0.85)] md:text-6xl">
                       Crashed!
@@ -1387,7 +1399,7 @@ function GamesSection({
               {activeGame.id === "cupchase" && (
                 <>
                   <CupChaseMedia roundState={roundState} />
-                  <div className="absolute inset-0 bg-gradient-to-r from-black/50 via-transparent to-black/20" />
+                  <div className="absolute inset-0 z-10 bg-gradient-to-r from-black/50 via-transparent to-black/20" />
                   {roundState === "crashed" && (
                     <div className="absolute right-8 top-20 z-20 rotate-[-6deg] text-4xl font-black uppercase text-ember drop-shadow-[0_4px_0_rgba(0,0,0,0.85)] md:text-5xl">
                       Trophy Escaped!
@@ -1401,7 +1413,7 @@ function GamesSection({
                   )}
                 </>
               )}
-              <div className="absolute left-8 top-8 flex gap-2">
+              <div className="absolute left-8 top-8 z-20 flex gap-2">
                 {activeGame.history.map((item) => (
                   <span key={item} className="rounded bg-white/10 px-2 py-1 text-xs font-bold text-white/60">
                     {item}
@@ -1409,7 +1421,7 @@ function GamesSection({
                 ))}
               </div>
 
-              <div className={`absolute left-1/2 top-1/2 grid -translate-x-1/2 -translate-y-1/2 place-items-center text-center ${["kickcrash", "cupchase"].includes(activeGame.id) ? "rounded border border-white/10 bg-black/55 px-8 py-6 backdrop-blur-sm" : ""}`}>
+              <div className={`absolute left-1/2 top-1/2 z-20 grid -translate-x-1/2 -translate-y-1/2 place-items-center text-center ${["kickcrash", "cupchase"].includes(activeGame.id) ? "rounded border border-white/10 bg-black/55 px-8 py-6 backdrop-blur-sm" : ""}`}>
                 <div className={`mb-6 grid h-28 w-28 place-items-center rounded-full bg-gradient-to-br ${activeGame.accent} text-black shadow-gold ${["kickcrash", "cupchase"].includes(activeGame.id) ? "hidden" : ""}`}>
                   {activeGame.id === "kickcrash" ? <Flame size={46} /> : <Trophy size={46} />}
                 </div>
