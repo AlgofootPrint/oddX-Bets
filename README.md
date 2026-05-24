@@ -143,7 +143,7 @@ npm run build
 The project is deployed on Vercel under the lowercase production name:
 
 ```txt
-https://oddxbets.vercel.app
+https://okx-theta.vercel.app
 ```
 
 ## Notes
