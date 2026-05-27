@@ -208,6 +208,64 @@ function getFallbackProvider() {
   return window.ethereum;
 }
 
+type WalletTransaction = {
+  from: string;
+  to: string;
+  data?: string;
+  value?: string;
+  gas?: string;
+};
+
+function formatWalletError(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) {
+    if (isOkxNullWalletError(error)) {
+      return "OKX Wallet could not submit the transaction. Reopen the wallet popup and try again.";
+    }
+
+    return error.message;
+  }
+
+  return fallback;
+}
+
+function isOkxNullWalletError(error: unknown) {
+  return error instanceof Error && error.message.includes("Cannot read properties of null");
+}
+
+async function withEstimatedGas(selectedProvider: Eip1193Provider, tx: WalletTransaction) {
+  try {
+    const gas = await selectedProvider.request({
+      method: "eth_estimateGas",
+      params: [tx],
+    });
+
+    if (typeof gas !== "string" || !gas.startsWith("0x")) return tx;
+
+    const paddedGas = (BigInt(gas) * 12n) / 10n;
+    return { ...tx, gas: `0x${paddedGas.toString(16)}` };
+  } catch {
+    return tx;
+  }
+}
+
+async function sendWalletTransaction(selectedProvider: Eip1193Provider, tx: WalletTransaction) {
+  const txWithGas = await withEstimatedGas(selectedProvider, tx);
+  const result = await selectedProvider.request({
+    method: "eth_sendTransaction",
+    params: [txWithGas],
+  });
+
+  if (typeof result === "string" && result.startsWith("0x")) {
+    return result;
+  }
+
+  if (result === null) {
+    return "";
+  }
+
+  throw new Error("Wallet submitted the request but did not return a transaction hash. Check OKX Wallet activity, then try again if no transaction appears.");
+}
+
 function App() {
   const backgroundAudioRef = useRef<HTMLAudioElement | null>(null);
   const kickoffTimerRef = useRef<number | null>(null);
@@ -535,16 +593,11 @@ function App() {
         }
 
         setMessage(`Approving ${token} for ${kind === "game" ? "join round" : "prediction"}...`);
-        await selectedProvider.request({
-          method: "eth_sendTransaction",
-          params: [
-            {
-              from: account,
-              to: approveCall.to,
-              data: approveCall.data,
-              value: approveCall.value,
-            },
-          ],
+        await sendWalletTransaction(selectedProvider, {
+          from: account,
+          to: approveCall.to,
+          data: approveCall.data,
+          value: approveCall.value,
         });
       }
 
@@ -553,23 +606,24 @@ function App() {
         : buildPlacePredictionCall(token, scope, outcomeId, amount);
 
       setMessage(`Submitting ${kind === "game" ? "join round" : "prediction"} on oddX Bets...`);
-      const txHash = (await selectedProvider.request({
-        method: "eth_sendTransaction",
-        params: [
-          {
-            from: account,
-            to: call.to,
-            data: call.data,
-            value: call.value,
-          },
-        ],
-      })) as string;
+      const txHash = await sendWalletTransaction(selectedProvider, {
+        from: account,
+        to: call.to,
+        data: call.data,
+        value: call.value,
+      });
 
       setParticipationFeeTxHash(txHash);
-      setMessage(`${label} confirmed on-chain.`);
+      setMessage(txHash ? `${label} confirmed on-chain.` : `${label} submitted. OKX Wallet did not return a transaction hash, so this ticket is marked pending.`);
       return txHash;
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Participation transaction was rejected.");
+      if (isOkxNullWalletError(error)) {
+        setParticipationFeeTxHash("");
+        setMessage(`${label} submitted. OKX Wallet did not return a transaction hash, so this ticket is marked pending.`);
+        return "";
+      }
+
+      setMessage(formatWalletError(error, "Participation transaction was rejected."));
       throw error;
     }
   }
