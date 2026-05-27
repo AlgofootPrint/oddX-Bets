@@ -42,7 +42,8 @@ const tokenOptions = ["OKB", "USDC", "USDT"] as const;
 const KICKCRASH_BUILDER_EDGE_PERCENT = 7;
 const PLAYABLE_GAME_IDS = ["kickcrash", "cupchase"] as const;
 const KICKCRASH_KICKOFF_MS = 3289;
-const KICKCRASH_IN_AIR_MIN_MS = 3027;
+const KICKCRASH_IN_AIR_MIN_MS = 700;
+const KICKCRASH_MAX_LIVE_MS = 60000;
 const KICKCRASH_FALL_MS = 3307;
 const CUPCHASE_RUNNING_MS = 10042;
 const CUPCHASE_MIN_RUNNING_MS = 1200;
@@ -55,7 +56,7 @@ const MIN_LIVE_MS: Record<(typeof PLAYABLE_GAME_IDS)[number], number> = {
   cupchase: CUPCHASE_MIN_RUNNING_MS,
 };
 const MAX_LIVE_MS: Record<(typeof PLAYABLE_GAME_IDS)[number], number> = {
-  kickcrash: KICKCRASH_IN_AIR_MIN_MS,
+  kickcrash: KICKCRASH_MAX_LIVE_MS,
   cupchase: CUPCHASE_RUNNING_MS,
 };
 
@@ -353,27 +354,33 @@ function App() {
     const crashAt =
       isCupChase
         ? roll < 0.01
-          ? 5 + Math.random() * 0.8
-          : roll < 0.08
-            ? 3 + Math.random() * 0.8
-            : roll < 0.28
-              ? 1.8 + Math.random() * 0.9
-              : 1.12 + Math.random() * 0.58
+          ? 1.2 + Math.random() * 1
+          : roll < 0.18
+            ? 2.5 + Math.random() * 1.8
+            : roll < 0.45
+              ? 4.3 + Math.random() * 3.7
+              : roll < 0.72
+                ? 8 + Math.random() * 4
+                : roll < 0.9
+                  ? 12 + Math.random() * 4
+                  : 16 + Math.random() * 4
         : roll < 0.01
-          ? 7 + Math.random() * 1.6
-          : roll < 0.06
-            ? 5 + Math.random() * 1.3
-            : roll < 0.16
-              ? 4.2 + Math.random() * 1.3
-              : roll < 0.46
-                ? 3 + Math.random() * 1.2
-                : roll < 0.76
-                  ? 1.8 + Math.random() * 1.2
-                  : 1.18 + Math.random() * 0.72;
+          ? 1.3 + Math.random() * 1.1
+          : roll < 0.18
+            ? 2.8 + Math.random() * 1.7
+            : roll < 0.42
+              ? 4.5 + Math.random() * 3.5
+              : roll < 0.68
+                ? 8 + Math.random() * 4
+                : roll < 0.88
+                  ? 12 + Math.random() * 4
+                  : 16 + Math.random() * 4;
 
     const timer = window.setInterval(() => {
       const edgeDrag = isCupChase ? 1 - KICKCRASH_BUILDER_EDGE_PERCENT / 100 : 1 - KICKCRASH_BUILDER_EDGE_PERCENT / 140;
-      const step = isCupChase ? 0.025 + Math.random() * 0.055 : 0.032 + Math.random() * 0.065;
+      const step = isCupChase
+        ? (0.035 + Math.random() * 0.075) * (1 + liveMultiplier * 0.07)
+        : (0.035 + Math.random() * 0.075) * (1 + liveMultiplier * 0.08);
       liveMultiplier = Number((liveMultiplier + step * edgeDrag).toFixed(2));
       setMultiplier(liveMultiplier);
 
@@ -1203,9 +1210,9 @@ function AppNavbar({
                 href="https://web3.okx.com/xlayer/faucet?utm_source=chatgpt.com"
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex min-h-9 items-center gap-2 rounded border border-white/15 bg-white/[0.04] px-2.5 py-2 text-sm font-bold text-white transition hover:bg-white/[0.1] md:px-3"
+                className="inline-flex min-h-8 items-center gap-1.5 rounded border border-white/15 bg-white/[0.04] px-2 py-1.5 text-xs font-bold text-white transition hover:bg-white/[0.1]"
               >
-                <Droplets size={16} />
+                <Droplets size={14} />
                 Faucet
               </a>
               {account && (
@@ -1271,91 +1278,77 @@ function KickCrashMedia({
   onKickoffComplete: () => void;
   onCrashComplete: () => void;
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const kickoffVideoRef = useRef<HTMLVideoElement>(null);
+  const inAirVideoRef = useRef<HTMLVideoElement>(null);
+  const fallVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video || roundState === "waiting") return;
+    const videos = [kickoffVideoRef.current, inAirVideoRef.current, fallVideoRef.current];
+    const activeVideo =
+      roundState === "kicking"
+        ? kickoffVideoRef.current
+        : roundState === "live" || roundState === "cashed"
+          ? inAirVideoRef.current
+          : roundState === "crashed"
+            ? fallVideoRef.current
+            : null;
 
-    video.currentTime = 0;
-    void video.play().catch(() => {
+    videos.forEach((video) => {
+      if (video && video !== activeVideo) {
+        video.pause();
+      }
+    });
+
+    if (!activeVideo) return;
+
+    activeVideo.currentTime = 0;
+    void activeVideo.play().catch(() => {
       // Browsers can still reject autoplay; muted + playsInline handles most cases.
     });
   }, [roundState]);
 
-  if (roundState === "kicking") {
-    return (
+  return (
+    <>
+      <img
+        src="/kick/restingstatekick.png"
+        alt="KickCrash resting state"
+        className={`absolute inset-0 z-0 h-full w-full object-cover object-center ${roundState === "waiting" ? "opacity-100" : "opacity-0"}`}
+        draggable={false}
+      />
       <video
-        ref={videoRef}
-        key="kickoff"
-        className="absolute inset-0 z-0 h-full w-full object-cover object-center"
-        autoPlay
+        ref={kickoffVideoRef}
+        className={`absolute inset-0 z-0 h-full w-full object-cover object-center ${roundState === "kicking" ? "opacity-100" : "opacity-0"}`}
         preload="auto"
         muted
         playsInline
         controls={false}
-        onLoadedData={() => {
-          const video = videoRef.current;
-          void video?.play().catch(() => {});
-        }}
         onEnded={onKickoffComplete}
       >
         <source src="/kick/kickanimation2.mp4" type="video/mp4" />
       </video>
-    );
-  }
-
-  if (roundState === "live" || roundState === "cashed") {
-    return (
       <video
-        ref={videoRef}
-        key="inair"
-        className="absolute inset-0 z-0 h-full w-full object-cover object-center"
-        autoPlay
+        ref={inAirVideoRef}
+        className={`absolute inset-0 z-0 h-full w-full object-cover object-center ${roundState === "live" || roundState === "cashed" ? "opacity-100" : "opacity-0"}`}
         loop
         preload="auto"
         muted
         playsInline
         controls={false}
-        onLoadedData={() => {
-          const video = videoRef.current;
-          void video?.play().catch(() => {});
-        }}
       >
         <source src="/kick/inair.mp4" type="video/mp4" />
       </video>
-    );
-  }
-
-  if (roundState === "crashed") {
-    return (
       <video
-        ref={videoRef}
-        key="fall"
-        className="absolute inset-0 z-0 h-full w-full object-cover object-center"
-        autoPlay
+        ref={fallVideoRef}
+        className={`absolute inset-0 z-0 h-full w-full object-cover object-center ${roundState === "crashed" ? "opacity-100" : "opacity-0"}`}
         preload="auto"
         muted
         playsInline
         controls={false}
-        onLoadedData={() => {
-          const video = videoRef.current;
-          void video?.play().catch(() => {});
-        }}
         onEnded={onCrashComplete}
       >
         <source src="/kick/fallball.mp4" type="video/mp4" />
       </video>
-    );
-  }
-
-  return (
-    <img
-      src="/kick/restingstatekick.png"
-      alt="KickCrash resting state"
-      className="absolute inset-0 z-0 h-full w-full object-cover object-center"
-      draggable={false}
-    />
+    </>
   );
 }
 
@@ -1364,7 +1357,12 @@ function CupChaseMedia({ roundState }: { roundState: RoundState }) {
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || roundState !== "live") return;
+    if (!video) return;
+
+    if (roundState !== "live") {
+      video.pause();
+      return;
+    }
 
     video.currentTime = 0;
     void video.play().catch(() => {
@@ -1372,46 +1370,32 @@ function CupChaseMedia({ roundState }: { roundState: RoundState }) {
     });
   }, [roundState]);
 
-  if (roundState === "live") {
-    return (
+  return (
+    <>
+      <img
+        src="/run/race1.png"
+        alt="Cup Chase ready state"
+        className={`absolute inset-0 z-0 h-full w-full object-cover object-center ${roundState === "waiting" || roundState === "cashed" ? "opacity-100" : "opacity-0"}`}
+        draggable={false}
+      />
       <video
         ref={videoRef}
-        key="running"
-        className="absolute inset-0 z-0 h-full w-full object-cover object-center"
-        autoPlay
+        className={`absolute inset-0 z-0 h-full w-full object-cover object-center ${roundState === "live" ? "opacity-100" : "opacity-0"}`}
         loop
         preload="auto"
         muted
         playsInline
         controls={false}
-        onLoadedData={() => {
-          const video = videoRef.current;
-          void video?.play().catch(() => {});
-        }}
       >
         <source src="/run/running.mp4" type="video/mp4" />
       </video>
-    );
-  }
-
-  if (roundState === "crashed") {
-    return (
       <img
         src="/run/ranway.png"
         alt="Cup Chase trophy escaped"
-        className="absolute inset-0 z-0 h-full w-full object-cover object-center"
+        className={`absolute inset-0 z-0 h-full w-full object-cover object-center ${roundState === "crashed" ? "opacity-100" : "opacity-0"}`}
         draggable={false}
       />
-    );
-  }
-
-  return (
-    <img
-      src="/run/race1.png"
-      alt="Cup Chase ready state"
-      className="absolute inset-0 z-0 h-full w-full object-cover object-center"
-      draggable={false}
-    />
+    </>
   );
 }
 
