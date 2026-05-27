@@ -34,7 +34,7 @@ const XLAYER_TESTNET = {
     symbol: "OKB",
     decimals: 18,
   },
-  rpcUrls: ["https://testrpc.xlayer.tech/terigon", "https://xlayertestrpc.okx.com/terigon"],
+  rpcUrls: ["https://testrpc.xlayer.tech/terigon"],
   blockExplorerUrls: ["https://www.okx.com/web3/explorer/xlayer-test"],
 };
 
@@ -206,6 +206,10 @@ function getOkxProvider() {
 
 function getFallbackProvider() {
   return window.ethereum;
+}
+
+function isXLayerTestnetChain(chainId: unknown) {
+  return typeof chainId === "string" && chainId.toLowerCase() === XLAYER_TESTNET.chainId.toLowerCase();
 }
 
 type WalletTransaction = {
@@ -633,7 +637,7 @@ function App() {
 
     try {
       const chainId = await selectedProvider.request({ method: "eth_chainId" });
-      if (chainId === XLAYER_TESTNET.chainId) {
+      if (isXLayerTestnetChain(chainId)) {
         setChainStatus("X Layer testnet connected");
         return;
       }
