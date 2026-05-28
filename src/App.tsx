@@ -217,7 +217,6 @@ type WalletTransaction = {
   to: string;
   data?: string;
   value?: string;
-  gas?: string;
 };
 
 function formatWalletError(error: unknown, fallback: string) {
@@ -236,27 +235,10 @@ function isOkxNullWalletError(error: unknown) {
   return error instanceof Error && error.message.includes("Cannot read properties of null");
 }
 
-async function withEstimatedGas(selectedProvider: Eip1193Provider, tx: WalletTransaction) {
-  try {
-    const gas = await selectedProvider.request({
-      method: "eth_estimateGas",
-      params: [tx],
-    });
-
-    if (typeof gas !== "string" || !gas.startsWith("0x")) return tx;
-
-    const paddedGas = (BigInt(gas) * 12n) / 10n;
-    return { ...tx, gas: `0x${paddedGas.toString(16)}` };
-  } catch {
-    return tx;
-  }
-}
-
 async function sendWalletTransaction(selectedProvider: Eip1193Provider, tx: WalletTransaction) {
-  const txWithGas = await withEstimatedGas(selectedProvider, tx);
   const result = await selectedProvider.request({
     method: "eth_sendTransaction",
-    params: [txWithGas],
+    params: [tx],
   });
 
   if (typeof result === "string" && result.startsWith("0x")) {
@@ -268,6 +250,11 @@ async function sendWalletTransaction(selectedProvider: Eip1193Provider, tx: Wall
   }
 
   throw new Error("Wallet submitted the request but did not return a transaction hash. Check OKX Wallet activity, then try again if no transaction appears.");
+}
+
+async function syncXLayerStatus(selectedProvider: Eip1193Provider) {
+  const chainId = await selectedProvider.request({ method: "eth_chainId" });
+  return isXLayerTestnetChain(chainId) ? "X Layer testnet connected" : "Switch to X Layer testnet";
 }
 
 function App() {
@@ -497,7 +484,7 @@ function App() {
       const nextAccount = accounts[0];
       setAccount(nextAccount);
       setWalletSource(okx ? "OKX Wallet" : "EVM Wallet");
-      await ensureXLayer(selectedProvider);
+      setChainStatus(await syncXLayerStatus(selectedProvider));
       const savedUsername = getProfileNameForWallet(nextAccount);
       if (savedUsername) {
         setUsername(savedUsername);
@@ -588,8 +575,6 @@ function App() {
     const tokenConfig = getTokenConfig(token);
 
     try {
-      await ensureXLayer(selectedProvider);
-
       if (!tokenConfig.native) {
         const approveCall = buildApproveCall(token, ODDX_BETS_ARENA_ADDRESS, amount);
         if (!approveCall) {
